@@ -1,2 +1,5 @@
-public class Vehicle_Type {
+public enum Vehicle_Type {
+    CAR,
+    MOTORCYCLE,
+    VAN
 }
