@@ -15,6 +15,13 @@ public abstract class Person {
 
     public void setName(String name) { this.name = name; }
     public void setAge(int age) { this.age = age; }
-    
+    public void setContactNum(String contactNum) { this.contactNum = contactNum; }
+
+    public abstract String getRole();
+
+    @Override
+    public String toString() {
+        return getRole() + ": " + name + " (" + contactNum + ")";
+    }
 
 }
