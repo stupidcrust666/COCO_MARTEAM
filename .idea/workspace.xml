@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7f0d4799-a131-42d5-8126-f028c7c61be3" name="Changes" comment="Initial commit">
+    <list default="true" id="7f0d4799-a131-42d5-8126-f028c7c61be3" name="Changes" comment="&#10;burger">
       <change afterPath="$PROJECT_DIR$/src/Discountable.java" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/src/Driver.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
