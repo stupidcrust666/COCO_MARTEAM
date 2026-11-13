@@ -8,7 +8,6 @@ public class Ticket {
     private Parking_Slot slot;
 
     public double getDuration(){
-
         return;
     }
 
