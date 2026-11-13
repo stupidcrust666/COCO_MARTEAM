@@ -1,2 +1,5 @@
-public class Prioritizable {
+public interface Prioritizable {
+    double getDiscountRate();
+    boolean isEligible();
+
 }
