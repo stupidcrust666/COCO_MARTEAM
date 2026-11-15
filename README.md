@@ -1,9 +1,9 @@
 # COCO_MARTEAM
 Amazing coco martins of coco marteam:
-- Burot, Chloei M.
+- Buro, Chloie M.
 - Guday, Lorenzo Jose L.
 - Hilado, Myrrh Felicity J.
-- Lacia, Preincess Jane A<
+- Lacia, Princess Jane A.
 - LUMAPAK = 0;
 Parking Management Systemmm meow help to erm park meow no
 - 
