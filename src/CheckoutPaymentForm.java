@@ -120,6 +120,11 @@ public class CheckoutPaymentForm {
         if (success) {
             // Disable the button so the user cannot accidentally pay twice
             btnConfirmPayment.setEnabled(false);
+            // Log the completed payment into RecordsHistoryForm so History updates live
+            String slotId = (currentPayment.getTicket() != null && currentPayment.getTicket().getSlot() != null)
+                    ? currentPayment.getTicket().getSlot().getSlotID()
+                    : "DEMO";
+            RecordsHistoryForm.addPaymentRecord(currentPayment, slotId);
 
             JOptionPane.showMessageDialog(
                     mainPanel,
