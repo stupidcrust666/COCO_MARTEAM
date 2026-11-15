@@ -1,5 +1,5 @@
 public interface Prioritizable {
-    double getDiscountRate();
-    boolean isEligible();
+    boolean isPriorityEligible();
+    Parking_Slot getSlot();
 
 }

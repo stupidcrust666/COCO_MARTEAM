@@ -41,14 +41,16 @@ public class Payment {
         if (totalAmount >= 0 && paymentMethod != null) {
             this.paymentStatus = Payment_Status.PAID;
             this.paymentTime = LocalDateTime.now();
-            if (ticket != null && ticket.getSlot() != null) {
-                ticket.getSlot().releaseSlot();
-            }
+//            if (ticket != null && ticket.getSlot() != null) {
+//                ticket.getSlot().releaseSlot();
+//            }
             return true;
         }
         this.paymentStatus = Payment_Status.FAILED;
         return false;
     }
+
+    public boolean verifyPayment() { return paymentStatus == Payment_Status.PAID; }
 
     public String getPaymentID() {
         return paymentID;

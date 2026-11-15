@@ -1,4 +1,5 @@
 public interface Discountable {
-    boolean isEligible();
-    Parking_Slot getSlot();
+    double getDiscountRate();
+    double calculateDiscount(double amount);   // returns the amount to be deducted
+    boolean isDiscountEligible();
 }

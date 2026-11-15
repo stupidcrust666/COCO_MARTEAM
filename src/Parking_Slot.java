@@ -4,10 +4,18 @@ public class Parking_Slot {
     private Vehicle_Type allowedType;
     private boolean isOccupied;
     private Vehicle parkedVehicle;
+    private boolean isPriorityZone;
 
     public Parking_Slot(String slotID, Vehicle_Type allowedType) {
         this.slotID = slotID;
         this.allowedType = allowedType;
+        this.isOccupied = false;
+        this.parkedVehicle = null;
+    }
+
+    public Parking_Slot(String slotID, boolean isPriorityZone) {
+        this.slotID = slotID;
+        this.isPriorityZone = isPriorityZone;
         this.isOccupied = false;
         this.parkedVehicle = null;
     }
@@ -19,6 +27,10 @@ public class Parking_Slot {
         this.parkedVehicle = vehicle;
         this.isOccupied = true;
         return true;
+    }
+
+    public void occupy() {
+        this.isOccupied = true;
     }
 
     public void releaseSlot() {
@@ -40,5 +52,9 @@ public class Parking_Slot {
 
     public Vehicle getParkedVehicle() {
         return parkedVehicle;
+    }
+
+    public boolean isPriorityZone() {
+        return isPriorityZone;
     }
 }
