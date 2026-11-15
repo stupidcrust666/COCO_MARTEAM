@@ -4,6 +4,5 @@ Amazing coco martins of coco marteam:
 - Guday, Lorenzo Jose L.
 - Hilado, Myrrh Felicity J.
 - Lacia, Princess Jane A.
-- LUMAPAK = 0;
-Parking Management Systemmm meow help to erm park meow no
-- 
+- Lumapak, Aldrin F.;
+Parking Management Systemmm meow 
