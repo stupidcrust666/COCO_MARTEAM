@@ -1,5 +1,6 @@
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import java.awt.Dimension;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -76,6 +77,7 @@ public class SmartParking {
             JFrame historyFrame = new JFrame("Parking & Payment History");
             historyFrame.setContentPane(new RecordsHistoryForm().getMainPanel());
             historyFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            historyFrame.setMinimumSize(new Dimension(680, 440));
             historyFrame.pack();
             historyFrame.setLocationRelativeTo(mainPanel);
             historyFrame.setVisible(true);

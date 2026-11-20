@@ -2,6 +2,7 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
+import java.awt.Dimension;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -21,11 +22,11 @@ public class RecordsHistoryForm {
     private JTextField txtSearch;
     private JComboBox<String> cmbStatusFilter;
     private JButton btnRefresh;
+    private JButton btnClear;
     private JTable tblRecords;
     private JLabel lblTotalRecords;
     private JLabel lblTotalRevenue;
     private JButton btnClose;
-    private JButton button1;
 
     // Shared in-memory list backed by a local CSV file so records persist across runs
     private static final List<Object[]> sessionRecords = new ArrayList<>();
@@ -51,7 +52,7 @@ public class RecordsHistoryForm {
         }
 
         // Set up table columns and lock cells so users cannot accidentally edit history rows
-        String[] columns = {"Payment ID", "Slot", "Method", "Amount (PHP)", "Status"};
+        String[] columns = {"Payment ID", "Slot", "Plate Number", "Method", "Amount (PHP)", "Status"};
         tableModel = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -61,6 +62,7 @@ public class RecordsHistoryForm {
         tblRecords.setModel(tableModel);
         tblRecords.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         tblRecords.getTableHeader().setReorderingAllowed(false);
+        configureTableColumnWidths();
 
         // Populate status filter dropdown
         cmbStatusFilter.setModel(new DefaultComboBoxModel<>(new String[]{"ALL", "PAID", "PENDING"}));
@@ -91,13 +93,60 @@ public class RecordsHistoryForm {
             refreshTable();
         });
 
-        // Listener 4: Close only this history window without exiting the whole application
+        // Listener 4: Confirm and clear all saved history records (useful before live demos)
+        if (btnClear != null) {
+            btnClear.addActionListener(e -> handleClearHistory());
+        }
+
+        // Listener 5: Close only this history window without exiting the whole application
         btnClose.addActionListener(e -> {
             java.awt.Window window = SwingUtilities.getWindowAncestor(mainPanel);
             if (window != null) {
                 window.dispose();
             }
         });
+    }
+
+    /**
+     * Sets explicit column widths, row height, and preferred viewport size
+     * so headers and cell values never truncate with "..." when packed.
+     */
+    private void configureTableColumnWidths() {
+        tblRecords.setRowHeight(24);
+        tblRecords.setPreferredScrollableViewportSize(new Dimension(620, 300));
+
+        int[] widths = {115, 60, 110, 110, 110, 85};
+        for (int i = 0; i < widths.length && i < tblRecords.getColumnCount(); i++) {
+            tblRecords.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+        }
+    }
+
+    /**
+     * Prompts for confirmation and clears all records from memory and parking_records.csv.
+     */
+    private void handleClearHistory() {
+        int confirm = JOptionPane.showConfirmDialog(
+                mainPanel,
+                "Are you sure you want to clear all parking and payment history records?",
+                "Confirm Clear History",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            sessionRecords.clear();
+            saveRecordsToFile();
+            txtSearch.setText("");
+            cmbStatusFilter.setSelectedIndex(0);
+            refreshTable();
+
+            JOptionPane.showMessageDialog(
+                    mainPanel,
+                    "All history records have been cleared.",
+                    "History Cleared",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        }
     }
 
     /**
@@ -119,13 +168,22 @@ public class RecordsHistoryForm {
                     continue; // Skip blank lines and CSV header
                 }
                 String[] parts = line.split(",");
-                if (parts.length >= 5) {
+                if (parts.length >= 6) {
+                    String id = parts[0].trim();
+                    String slot = parts[1].trim();
+                    String plate = parts[2].trim();
+                    String method = parts[3].trim();
+                    double amount = Double.parseDouble(parts[4].trim());
+                    String status = parts[5].trim();
+                    sessionRecords.add(new Object[]{id, slot, plate, method, amount, status});
+                } else if (parts.length == 5) {
+                    // Backward compatibility for older 5-column CSV rows without plate number
                     String id = parts[0].trim();
                     String slot = parts[1].trim();
                     String method = parts[2].trim();
                     double amount = Double.parseDouble(parts[3].trim());
                     String status = parts[4].trim();
-                    sessionRecords.add(new Object[]{id, slot, method, amount, status});
+                    sessionRecords.add(new Object[]{id, slot, "N/A", method, amount, status});
                 }
             }
         } catch (IOException | NumberFormatException e) {
@@ -138,15 +196,16 @@ public class RecordsHistoryForm {
      */
     public static void saveRecordsToFile() {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(RECORDS_FILE))) {
-            writer.write("PaymentID,Slot,Method,Amount,Status");
+            writer.write("PaymentID,Slot,PlateNumber,Method,Amount,Status");
             writer.newLine();
             for (Object[] row : sessionRecords) {
                 writer.write(
                         row[0] + "," +
                                 row[1] + "," +
                                 row[2] + "," +
-                                String.format("%.2f", ((Number) row[3]).doubleValue()) + "," +
-                                row[4]
+                                row[3] + "," +
+                                String.format("%.2f", ((Number) row[4]).doubleValue()) + "," +
+                                row[5]
                 );
                 writer.newLine();
             }
@@ -167,11 +226,16 @@ public class RecordsHistoryForm {
 
         String id = payment.getPaymentID() != null ? payment.getPaymentID() : "N/A";
         String slot = (slotId != null && !slotId.trim().isEmpty()) ? slotId : "N/A";
+        String plate = "N/A";
+        if (payment.getTicket() != null && payment.getTicket().getVehicle() != null
+                && payment.getTicket().getVehicle().getPlateNum() != null) {
+            plate = payment.getTicket().getVehicle().getPlateNum();
+        }
         String method = payment.getPaymentMethod() != null ? payment.getPaymentMethod().name() : "CASH";
         double amount = payment.getTotalAmount();
         String status = payment.getPaymentStatus() != null ? payment.getPaymentStatus().name() : "PENDING";
 
-        sessionRecords.add(new Object[]{id, slot, method, amount, status});
+        sessionRecords.add(new Object[]{id, slot, plate, method, amount, status});
         saveRecordsToFile();
     }
 
@@ -188,11 +252,11 @@ public class RecordsHistoryForm {
         if (targetId != null) {
             for (Object[] row : sessionRecords) {
                 if (targetId.equals(String.valueOf(row[0]))) {
-                    row[2] = updatedPayment.getPaymentMethod() != null
+                    row[3] = updatedPayment.getPaymentMethod() != null
                             ? updatedPayment.getPaymentMethod().name()
-                            : row[2];
-                    row[3] = updatedPayment.getTotalAmount();
-                    row[4] = updatedPayment.getPaymentStatus() != null
+                            : row[3];
+                    row[4] = updatedPayment.getTotalAmount();
+                    row[5] = updatedPayment.getPaymentStatus() != null
                             ? updatedPayment.getPaymentStatus().name()
                             : "PAID";
                     saveRecordsToFile();
@@ -225,25 +289,31 @@ public class RecordsHistoryForm {
         for (Object[] row : sessionRecords) {
             String paymentId = String.valueOf(row[0]);
             String slot = String.valueOf(row[1]);
-            String method = String.valueOf(row[2]);
-            double amount = (row[3] instanceof Number) ? ((Number) row[3]).doubleValue() : 0.0;
-            String status = String.valueOf(row[4]);
+            String plate = String.valueOf(row[2]);
+            String method = String.valueOf(row[3]);
+            double amount = (row[4] instanceof Number) ? ((Number) row[4]).doubleValue() : 0.0;
+            String status = String.valueOf(row[5]);
+            String amountStr = String.format("%.2f", amount);
 
             // Check status filter
             boolean matchesStatus = selectedStatus.equals("ALL") || status.equalsIgnoreCase(selectedStatus);
 
-            // Check search text against Payment ID, Slot, or Payment Method
+            // Check search text against Payment ID, Slot, Plate Number, Method, Amount, or Status
             boolean matchesSearch = query.isEmpty()
                     || paymentId.toLowerCase().contains(query)
                     || slot.toLowerCase().contains(query)
-                    || method.toLowerCase().contains(query);
+                    || plate.toLowerCase().contains(query)
+                    || method.toLowerCase().contains(query)
+                    || amountStr.contains(query)
+                    || status.toLowerCase().contains(query);
 
             if (matchesStatus && matchesSearch) {
                 tableModel.addRow(new Object[]{
                         paymentId,
                         slot,
+                        plate,
                         method,
-                        String.format("%.2f", amount),
+                        amountStr,
                         status
                 });
                 visibleCount++;
@@ -276,6 +346,7 @@ public class RecordsHistoryForm {
             JFrame frame = new JFrame("Parking & Payment History");
             frame.setContentPane(new RecordsHistoryForm().getMainPanel());
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setMinimumSize(new Dimension(680, 440));
             frame.pack();
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
