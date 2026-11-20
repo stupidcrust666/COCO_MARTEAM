@@ -2,12 +2,18 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Displays completed and pending parking payment transactions in a searchable,
- * filterable table with live record count and revenue totals.
+ * filterable table with live record count, revenue totals, and CSV file persistence.
  */
 public class RecordsHistoryForm {
     // Swing UI components automatically bound to RecordsHistoryForm.form via their field names
@@ -19,20 +25,30 @@ public class RecordsHistoryForm {
     private JLabel lblTotalRecords;
     private JLabel lblTotalRevenue;
     private JButton btnClose;
+    private JButton button1;
 
-    // Shared in-memory list so payments processed during the session appear here automatically
+    // Shared in-memory list backed by a local CSV file so records persist across runs
     private static final List<Object[]> sessionRecords = new ArrayList<>();
+    private static final String RECORDS_FILE = "parking_records.csv";
+    private static boolean isLoadedFromFile = false;
 
     // Table model backing tblRecords
     private DefaultTableModel tableModel;
+
+    // Load previously saved records from disk as soon as the class is referenced
+    static {
+        loadRecordsFromFile();
+    }
 
     /**
      * Initializes the RecordsHistoryForm, configures a read-only table,
      * populates filter options, and attaches search/filter listeners.
      */
     public RecordsHistoryForm() {
-
-
+        // Ensure records are loaded from file if not yet initialized
+        if (!isLoadedFromFile) {
+            loadRecordsFromFile();
+        }
 
         // Set up table columns and lock cells so users cannot accidentally edit history rows
         String[] columns = {"Payment ID", "Slot", "Method", "Amount (PHP)", "Status"};
@@ -67,10 +83,11 @@ public class RecordsHistoryForm {
         // Listener 2: Filter rows whenever the status dropdown changes
         cmbStatusFilter.addActionListener(e -> refreshTable());
 
-        // Listener 3: Reset search/filter and reload all records when "Refresh" is clicked
+        // Listener 3: Reset search/filter and reload records from file when "Refresh" is clicked
         btnRefresh.addActionListener(e -> {
             txtSearch.setText("");
             cmbStatusFilter.setSelectedIndex(0);
+            loadRecordsFromFile();
             refreshTable();
         });
 
@@ -84,8 +101,63 @@ public class RecordsHistoryForm {
     }
 
     /**
-     * Allows CheckoutPaymentForm or SmartParking to log a completed Payment
-     * into the history table safely (null-checked to prevent crashes).
+     * Reads saved payment records from parking_records.csv into sessionRecords.
+     */
+    public static void loadRecordsFromFile() {
+        File file = new File(RECORDS_FILE);
+        sessionRecords.clear();
+        isLoadedFromFile = true;
+
+        if (!file.exists()) {
+            return; // No saved records yet on first run
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty() || line.startsWith("PaymentID,")) {
+                    continue; // Skip blank lines and CSV header
+                }
+                String[] parts = line.split(",");
+                if (parts.length >= 5) {
+                    String id = parts[0].trim();
+                    String slot = parts[1].trim();
+                    String method = parts[2].trim();
+                    double amount = Double.parseDouble(parts[3].trim());
+                    String status = parts[4].trim();
+                    sessionRecords.add(new Object[]{id, slot, method, amount, status});
+                }
+            }
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error reading records file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Writes all current sessionRecords to parking_records.csv so data persists on disk.
+     */
+    public static void saveRecordsToFile() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(RECORDS_FILE))) {
+            writer.write("PaymentID,Slot,Method,Amount,Status");
+            writer.newLine();
+            for (Object[] row : sessionRecords) {
+                writer.write(
+                        row[0] + "," +
+                                row[1] + "," +
+                                row[2] + "," +
+                                String.format("%.2f", ((Number) row[3]).doubleValue()) + "," +
+                                row[4]
+                );
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.err.println("Error saving records file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Allows CheckoutPaymentForm or SmartParking to log a pending or completed Payment
+     * into the history table and save it to disk immediately.
      *
      * @param payment The Payment transaction to record
      * @param slotId  The parking slot ID associated with the ticket
@@ -97,12 +169,44 @@ public class RecordsHistoryForm {
         String slot = (slotId != null && !slotId.trim().isEmpty()) ? slotId : "N/A";
         String method = payment.getPaymentMethod() != null ? payment.getPaymentMethod().name() : "CASH";
         double amount = payment.getTotalAmount();
-        String status = payment.getPaymentStatus() != null ? payment.getPaymentStatus().name() : "PAID";
+        String status = payment.getPaymentStatus() != null ? payment.getPaymentStatus().name() : "PENDING";
 
         sessionRecords.add(new Object[]{id, slot, method, amount, status});
+        saveRecordsToFile();
     }
 
+    /**
+     * Updates an existing PENDING payment record to PAID once checkout is confirmed,
+     * saves the updated list to disk, or appends a new record if not found.
+     *
+     * @param updatedPayment The confirmed Payment transaction
+     */
+    public static void updatePaymentRecord(Payment updatedPayment) {
+        if (updatedPayment == null) return;
 
+        String targetId = updatedPayment.getPaymentID();
+        if (targetId != null) {
+            for (Object[] row : sessionRecords) {
+                if (targetId.equals(String.valueOf(row[0]))) {
+                    row[2] = updatedPayment.getPaymentMethod() != null
+                            ? updatedPayment.getPaymentMethod().name()
+                            : row[2];
+                    row[3] = updatedPayment.getTotalAmount();
+                    row[4] = updatedPayment.getPaymentStatus() != null
+                            ? updatedPayment.getPaymentStatus().name()
+                            : "PAID";
+                    saveRecordsToFile();
+                    return;
+                }
+            }
+        }
+
+        // Fallback: add as a new record if it was not logged during check-in
+        String slotId = (updatedPayment.getTicket() != null && updatedPayment.getTicket().getSlot() != null)
+                ? updatedPayment.getTicket().getSlot().getSlotID()
+                : "N/A";
+        addPaymentRecord(updatedPayment, slotId);
+    }
 
     /**
      * Filters sessionRecords by search keyword and status, updates the JTable,

@@ -25,9 +25,12 @@ public class SmartParking {
     private JButton btnCheckOut;
     private JButton btnLogout;
 
-    // In-memory parking slots and active tickets keyed by slotID
+    // In-memory parking slots, active tickets, metadata, and pending payments keyed by slotID
     private final List<Parking_Slot> parkingSlots = new ArrayList<>();
     private final Map<String, Ticket> activeTickets = new HashMap<>();
+    private final Map<String, String> activeTicketIds = new HashMap<>();
+    private final Map<String, LocalDateTime> activeEntryTimes = new HashMap<>();
+    private final Map<String, Payment> activePayments = new HashMap<>();
 
     // Table model backing tblParkingSlots
     private DefaultTableModel tableModel;
@@ -101,8 +104,9 @@ public class SmartParking {
     }
 
     /**
-     * Validates plate input, checks for duplicate active plates, assigns the first
-     * free slot matching the chosen Vehicle_Type, and generates a Ticket.
+     * Validates plate input, checks for duplicate active plates, assigns a
+     * free slot matching the chosen Vehicle_Type, generates a Ticket,
+     * and logs a PENDING payment record in RecordsHistoryForm.
      */
     private void handleCheckIn() {
         String rawPlate = txtPlateNumber.getText() != null ? txtPlateNumber.getText().trim().toUpperCase() : "";
@@ -119,7 +123,7 @@ public class SmartParking {
             return;
         }
 
-        // Guard 2: Basic length/character check so invalid inputs don't slip through
+        // Guard 2: Basic format check
         if (rawPlate.length() < 3 || !rawPlate.matches("[A-Z0-9 -]+")) {
             JOptionPane.showMessageDialog(
                     mainPanel,
@@ -131,7 +135,7 @@ public class SmartParking {
             return;
         }
 
-        // Guard 3: Prevent checking in a plate number that is already parked
+        // Guard 3: Prevent duplicate active plate numbers
         for (Parking_Slot slot : parkingSlots) {
             if (slot.isOccupied() && slot.getParkedVehicle() != null
                     && rawPlate.equalsIgnoreCase(slot.getParkedVehicle().getPlateNum())) {
@@ -150,27 +154,62 @@ public class SmartParking {
             selectedType = Vehicle_Type.CAR;
         }
 
-        // Find the first unoccupied slot matching the selected Vehicle_Type
         Parking_Slot targetSlot = null;
-        for (Parking_Slot slot : parkingSlots) {
-            if (!slot.isOccupied() && slot.getAllowedType() == selectedType) {
-                targetSlot = slot;
-                break;
+        int selectedRow = tblParkingSlots.getSelectedRow();
+
+        if (selectedRow >= 0) {
+            // User clicked a specific row in the table: validate that exact slot
+            String chosenSlotId = String.valueOf(tableModel.getValueAt(selectedRow, 0));
+            for (Parking_Slot slot : parkingSlots) {
+                if (slot.getSlotID().equals(chosenSlotId)) {
+                    targetSlot = slot;
+                    break;
+                }
+            }
+
+            if (targetSlot != null) {
+                if (targetSlot.isOccupied()) {
+                    JOptionPane.showMessageDialog(
+                            mainPanel,
+                            "Slot " + targetSlot.getSlotID() + " is already OCCUPIED. Choose an AVAILABLE slot.",
+                            "Slot Occupied",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+                if (targetSlot.getAllowedType() != selectedType) {
+                    JOptionPane.showMessageDialog(
+                            mainPanel,
+                            "Vehicle type mismatch! Slot " + targetSlot.getSlotID()
+                                    + " only accepts " + targetSlot.getAllowedType()
+                                    + ", not " + selectedType + ".",
+                            "Wrong Vehicle Type",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+            }
+        } else {
+            // No row selected: auto-assign the first unoccupied slot matching selectedType
+            for (Parking_Slot slot : parkingSlots) {
+                if (!slot.isOccupied() && slot.getAllowedType() == selectedType) {
+                    targetSlot = slot;
+                    break;
+                }
+            }
+
+            if (targetSlot == null) {
+                JOptionPane.showMessageDialog(
+                        mainPanel,
+                        "No available slots left for " + selectedType + ".",
+                        "Zone Full",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
             }
         }
 
-        // Guard 4: All slots for that vehicle type are full
-        if (targetSlot == null) {
-            JOptionPane.showMessageDialog(
-                    mainPanel,
-                    "No available slots left for " + selectedType + ".",
-                    "Zone Full",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        // Create and populate Vehicle using its public fields
+        // Create and populate Vehicle
         Vehicle vehicle = new Vehicle();
         vehicle.plateNum = rawPlate;
         vehicle.vehicleType = selectedType;
@@ -178,13 +217,30 @@ public class SmartParking {
         vehicle.model = selectedType.name();
         vehicle.color = "N/A";
 
-        // Assign vehicle to slot and issue an active Ticket
-        if (targetSlot.assignVehicle(vehicle)) {
+        // Assign vehicle to slot, issue an active Ticket, and log a PENDING Payment
+        if (targetSlot != null && targetSlot.assignVehicle(vehicle)) {
+            LocalDateTime now = LocalDateTime.now();
             String ticketId = "TKT-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-            Ticket ticket = new Ticket(ticketId, LocalDateTime.now(), vehicle, targetSlot);
+            Ticket ticket = new Ticket(ticketId, now, vehicle, targetSlot);
+
+            // Set hourly rate according to vehicle type
+            double hourlyRate = switch (selectedType) {
+                case MOTORCYCLE -> 30.0;
+                case CAR -> 50.0;
+                case VAN -> 70.0;
+            };
+            String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+            Payment pendingPayment = new Payment(paymentId, ticket, hourlyRate, Payment_Method.CASH);
+            ticket.setPayment(pendingPayment);
+
             activeTickets.put(targetSlot.getSlotID(), ticket);
+            activeTicketIds.put(targetSlot.getSlotID(), ticketId);
+            activeEntryTimes.put(targetSlot.getSlotID(), now);
+            activePayments.put(targetSlot.getSlotID(), pendingPayment);
+            RecordsHistoryForm.addPaymentRecord(pendingPayment, targetSlot.getSlotID());
 
             txtPlateNumber.setText("");
+            tblParkingSlots.clearSelection();
             txtPlateNumber.requestFocus();
             refreshSlotTable();
 
@@ -198,8 +254,9 @@ public class SmartParking {
     }
 
     /**
-     * Validates row selection, stamps exitTime on the Ticket, releases the slot,
-     * and opens CheckoutPaymentForm for payment processing.
+     * Validates row selection and opens CheckoutPaymentForm.
+     * The slot remains OCCUPIED until payment is actually confirmed; if the user
+     * clicks Cancel or closes the checkout dialog, the vehicle stays parked.
      */
     private void handleCheckOut() {
         int selectedRow = tblParkingSlots.getSelectedRow();
@@ -235,19 +292,37 @@ public class SmartParking {
             return;
         }
 
-        // Retrieve active ticket, stamp exit time, and release the slot
-        Ticket ticket = activeTickets.remove(slotId);
-        if (ticket == null) {
-            // Fallback ticket if state ever desynced, preventing NullPointerException
-            ticket = new Ticket("TKT-FALLBACK", LocalDateTime.now(), selectedSlot.getParkedVehicle(), selectedSlot);
-        }
-        ticket.setExitTime(LocalDateTime.now());
-        selectedSlot.releaseSlot();
-        refreshSlotTable();
+        // Peek at active ticket, metadata, and pending payment without removing them yet
+        LocalDateTime exitTime = LocalDateTime.now();
+        String ticketId = activeTicketIds.getOrDefault(slotId, "TKT-FALLBACK");
+        LocalDateTime entryTime = activeEntryTimes.getOrDefault(slotId, exitTime);
 
-        // Open CheckoutPaymentForm with the completed Ticket
+        Ticket ticket = activeTickets.get(slotId);
+        if (ticket == null) {
+            ticket = new Ticket(ticketId, entryTime, selectedSlot.getParkedVehicle(), selectedSlot);
+        }
+        Payment pendingPayment = activePayments.get(slotId);
+
+        // Stamp provisional exitTime for fee calculation (overwritten if payment is confirmed later)
+        ticket.setExitTime(exitTime);
+
+        final Parking_Slot slotToRelease = selectedSlot;
+
+        // Callback that runs ONLY after Confirm Payment succeeds
+        Runnable onPaymentSuccess = () -> {
+            activeTickets.remove(slotId);
+            activeTicketIds.remove(slotId);
+            activeEntryTimes.remove(slotId);
+            activePayments.remove(slotId);
+            slotToRelease.releaseSlot();
+            refreshSlotTable();
+        };
+
+        // Open CheckoutPaymentForm; slot stays OCCUPIED if user cancels or closes
         JFrame checkoutFrame = new JFrame("Checkout & Payment - Slot " + slotId);
-        checkoutFrame.setContentPane(new CheckoutPaymentForm(ticket).getMainPanel());
+        checkoutFrame.setContentPane(
+                new CheckoutPaymentForm(ticket, pendingPayment, ticketId, entryTime, exitTime, onPaymentSuccess).getMainPanel()
+        );
         checkoutFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         checkoutFrame.pack();
         checkoutFrame.setLocationRelativeTo(mainPanel);
@@ -275,6 +350,7 @@ public class SmartParking {
             loginFrame.setContentPane(new LoginForm().getMainPanel());
             loginFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             loginFrame.pack();
+            loginFrame.setSize(420, 260);
             loginFrame.setLocationRelativeTo(null);
             loginFrame.setVisible(true);
         }
@@ -300,7 +376,10 @@ public class SmartParking {
             } else {
                 Vehicle v = slot.getParkedVehicle();
                 String plate = (v != null && v.getPlateNum() != null) ? v.getPlateNum() : "UNKNOWN";
-                String timeText = LocalDateTime.now().format(TIME_FORMATTER);
+                LocalDateTime recordedEntry = activeEntryTimes.get(slot.getSlotID());
+                String timeText = (recordedEntry != null)
+                        ? recordedEntry.format(TIME_FORMATTER)
+                        : LocalDateTime.now().format(TIME_FORMATTER);
                 tableModel.addRow(new Object[]{
                         slot.getSlotID(),
                         slot.getAllowedType().name(),

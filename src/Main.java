@@ -1,5 +1,14 @@
+import javax.swing.*;
+
 public class Main {
     public static void main(String[] args) {
-        System.out.println("Hello world!");
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Smart Parking System");
+            frame.setContentPane(new LoginForm().getMainPanel());
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setSize(600, 400);
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
     }
 }
