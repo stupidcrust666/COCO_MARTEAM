@@ -1,6 +1,10 @@
 import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -61,6 +65,8 @@ public class SmartParking {
         tblParkingSlots.setModel(tableModel);
         tblParkingSlots.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         tblParkingSlots.getTableHeader().setReorderingAllowed(false);
+        tblParkingSlots.setRowHeight(24);
+        configureStatusRenderer();
 
         // Render initial slot state and availability counter
         refreshSlotTable();
@@ -85,6 +91,34 @@ public class SmartParking {
 
         // Listener 4: Logout and return cleanly to LoginForm
         btnLogout.addActionListener(e -> handleLogout());
+    }
+
+    /**
+     * Color-codes the Status column (green for AVAILABLE, red for OCCUPIED).
+     */
+    private void configureStatusRenderer() {
+        tblParkingSlots.getColumnModel().getColumn(2).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                                                           boolean isSelected, boolean hasFocus,
+                                                           int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                setHorizontalAlignment(SwingConstants.CENTER);
+                c.setFont(c.getFont().deriveFont(Font.BOLD));
+
+                if (!isSelected && value != null) {
+                    String status = value.toString();
+                    if ("AVAILABLE".equalsIgnoreCase(status)) {
+                        c.setForeground(new Color(22, 130, 58));
+                    } else if ("OCCUPIED".equalsIgnoreCase(status)) {
+                        c.setForeground(new Color(190, 35, 35));
+                    } else {
+                        c.setForeground(table.getForeground());
+                    }
+                }
+                return c;
+            }
+        });
     }
 
     /**
@@ -225,12 +259,7 @@ public class SmartParking {
             String ticketId = "TKT-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
             Ticket ticket = new Ticket(ticketId, now, vehicle, targetSlot);
 
-            // Set hourly rate according to vehicle type
-            double hourlyRate = switch (selectedType) {
-                case MOTORCYCLE -> 30.0;
-                case CAR -> 50.0;
-                case VAN -> 70.0;
-            };
+            double hourlyRate = selectedType.getHourlyRate();
             String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
             Payment pendingPayment = new Payment(paymentId, ticket, hourlyRate, Payment_Method.CASH);
             ticket.setPayment(pendingPayment);

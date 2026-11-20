@@ -147,14 +147,10 @@ public class CheckoutPaymentForm {
         long hours = (long) Math.max(1.0, Math.ceil(ticket.getDuration()));
         setLabelText(lblDuration, hours + " hr(s)");
 
-        double hourlyRate = 50.0;
-        if (ticket.getVehicle() != null && ticket.getVehicle().getVehicleType() != null) {
-            switch (ticket.getVehicle().getVehicleType()) {
-                case MOTORCYCLE -> hourlyRate = 30.0;
-                case CAR -> hourlyRate = 50.0;
-                case VAN -> hourlyRate = 70.0;
-            }
-        }
+        double hourlyRate = (ticket.getVehicle() != null && ticket.getVehicle().getVehicleType() != null)
+                ? ticket.getVehicle().getVehicleType().getHourlyRate()
+                : Vehicle_Type.CAR.getHourlyRate();
+
 
         if (currentPayment == null) {
             String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();

@@ -1,8 +1,12 @@
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -63,6 +67,7 @@ public class RecordsHistoryForm {
         tblRecords.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         tblRecords.getTableHeader().setReorderingAllowed(false);
         configureTableColumnWidths();
+        configureStatusRenderer();
 
         // Populate status filter dropdown
         cmbStatusFilter.setModel(new DefaultComboBoxModel<>(new String[]{"ALL", "PAID", "PENDING"}));
@@ -119,6 +124,36 @@ public class RecordsHistoryForm {
         for (int i = 0; i < widths.length && i < tblRecords.getColumnCount(); i++) {
             tblRecords.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
+    }
+
+    /**
+     * Color-codes the Status column (green for PAID, amber for PENDING, red for FAILED/REFUNDED).
+     */
+    private void configureStatusRenderer() {
+        tblRecords.getColumnModel().getColumn(5).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                                                           boolean isSelected, boolean hasFocus,
+                                                           int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                setHorizontalAlignment(SwingConstants.CENTER);
+                c.setFont(c.getFont().deriveFont(Font.BOLD));
+
+                if (!isSelected && value != null) {
+                    String status = value.toString();
+                    if ("PAID".equalsIgnoreCase(status)) {
+                        c.setForeground(new Color(22, 130, 58));
+                    } else if ("PENDING".equalsIgnoreCase(status)) {
+                        c.setForeground(new Color(195, 115, 0));
+                    } else if ("FAILED".equalsIgnoreCase(status) || "REFUNDED".equalsIgnoreCase(status)) {
+                        c.setForeground(new Color(190, 35, 35));
+                    } else {
+                        c.setForeground(table.getForeground());
+                    }
+                }
+                return c;
+            }
+        });
     }
 
     /**
